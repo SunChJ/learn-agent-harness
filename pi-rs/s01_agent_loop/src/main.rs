@@ -1,6 +1,7 @@
-//! Step 2: fire one hardcoded request at OpenAI's Responses API through the
-//! Codex backend, and print the raw response body so we can see what an SSE
-//! response actually looks like before writing any parsing code.
+//! Step 3: parse the raw SSE text from Step 2 into structured events instead
+//! of eyeballing a wall of JSON. `#[serde(other)]` is the key trick — it lets
+//! the enum skip event/item types we haven't modeled yet (like `reasoning`)
+//! instead of failing to parse the whole response.
 
 use std::env;
 use std::fs;
@@ -26,16 +27,69 @@ struct TokenData {
 }
 
 fn load_codex_tokens() -> Result<TokenData> {
-    let codex_home = env::var("CODEX_HOME").map(PathBuf::from).unwrap_or_else(|_| {
-        let home = env::var("HOME").expect("HOME not set");
-        PathBuf::from(home).join(".codex")
-    });
+    let codex_home = env::var("CODEX_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = env::var("HOME").expect("HOME not set");
+            PathBuf::from(home).join(".codex")
+        });
     let path = codex_home.join("auth.json");
-    let raw = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {} — run `codex login` first", path.display()))?;
+    let raw = fs::read_to_string(&path).with_context(|| {
+        format!(
+            "failed to read {} — run `codex login` first",
+            path.display()
+        )
+    })?;
     let parsed: AuthDotJson = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(parsed.tokens)
+}
+
+// ── Wire types for the Responses API ──────────────────────────────────────
+// Only the "final text answer" shape is modeled so far — no tool calls yet.
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ContentPart {
+    OutputText {
+        text: String,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum InputItem {
+    Message {
+        role: String,
+        content: Vec<ContentPart>,
+    },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type")]
+enum SseEvent {
+    #[serde(rename = "response.output_item.done")]
+    OutputItemDone { item: InputItem },
+    #[serde(rename = "response.completed")]
+    Completed,
+    #[serde(rename = "response.failed")]
+    Failed,
+    #[serde(rename = "response.incomplete")]
+    Incomplete,
+    #[serde(other)]
+    Other,
+}
+
+fn parse_sse_events(text: &str) -> Vec<SseEvent> {
+    text.lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .filter(|data| *data != "[DONE]")
+        .filter_map(|data| serde_json::from_str::<SseEvent>(data).ok())
+        .collect()
 }
 
 #[tokio::main]
@@ -72,9 +126,10 @@ async fn main() -> Result<()> {
         .await
         .context("request to Codex backend failed")?;
 
-    let status = resp.status();
     let text = resp.text().await?;
-    println!("status: {status}");
-    println!("{text}");
+    let events = parse_sse_events(&text);
+    for event in &events {
+        println!("{event:#?}");
+    }
     Ok(())
 }
