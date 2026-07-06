@@ -1,5 +1,6 @@
 # Rust
 pi-rs/target/
+target/
 
 # OS / editor
 .DS_Store

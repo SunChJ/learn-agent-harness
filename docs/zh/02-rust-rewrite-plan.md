@@ -3,13 +3,13 @@
 # 02 — pi-rs：里程碑式 Rust 重写计划
 
 在 `pi-rs/` 用 Rust 重写 pi。里程碑顺序沿 pi 的包依赖脊柱：**ai → agent → tools → session → tui**。
-每个里程碑包含：热身（learn-claude-code 对应阶段）、目标、移植对象（pi 中的文件）、Rust 学习点、codex 对照点、验收标准。
+每个里程碑包含：Rust 热身 lab、目标、移植对象（pi 中的文件）、Rust 学习点、codex 对照点、验收标准。
 
 **内核框架**（一个有用的心智锚点）：M0–M3 合起来构成 harness 的"最小内核"——**loop + context 组装 + tool 分发**这三件事。M4 之后的一切（截断、会话、压缩、TUI、权限）都是往内核上叠加的工程决策。走到 M3 验收通过，内核即成立。
 
 **总原则**：
 - pi 是规格，不是圣经——遇到 TS 特有的写法（declaration merging、鸭子类型注入），停下来想 Rust 的等价物（trait、泛型、enum），这正是学习发生的地方。
-- 每个里程碑开工前，先跑通 learn-claude-code 对应阶段（下文"热身"栏），半小时换一份可运行直觉。
+- 每个里程碑开工前，先跑通 `rust-course` 对应 lab；没有现成 lab 的高级主题，先在 `rust-course` 里写一个 50–150 行 Rust spike，再移植进 `pi-rs/`。
 - 每个里程碑结束跑 `cargo clippy && cargo fmt && cargo test`，并写一篇笔记（模板见 `notes/TEMPLATE.md`）。
 - 不要提前抽象。pi 自己也是"先能跑，抽象后置"。
 
@@ -45,7 +45,7 @@
 
 ## M2 · Anthropic 流式 Provider（1–2 周，第一个硬仗）
 
-**热身**：learn-claude-code `s11_error_recovery`（错误如何被吞进流里而不是炸出去）。
+**Rust 热身**：`cargo run -p rust-course --bin m2_stream_errors`（错误如何被编码进流里而不是炸出去）。
 **目标**：SSE 流式调用 Anthropic，把原始事件翻译成 M1 的 `AssistantMessageEvent`，含工具调用分片的增量拼装。
 
 - 移植对象：`packages/ai/src/api/anthropic-messages.ts`（含 partial JSON 拼装逻辑）。
@@ -57,7 +57,7 @@
 
 ## M3 · Agent Loop（1–2 周，全项目认知核心）
 
-**热身**：learn-claude-code `s01_agent_loop` + `s02_tool_use` + `s10_system_prompt`（如果第零步已跑过 s01/s02，重读一遍代码即可）。
+**Rust 热身**：`cargo run -p rust-course --bin m3_agent_loop`（如果第零步已跑过，重读 `rust-course/src/lib.rs` 里的 loop 即可）。
 **目标**：移植 `agent-loop.ts`，新建 `pi-agent` crate。
 
 - 移植对象：`packages/agent/src/agent-loop.ts`（内外双循环、prepare/execute/finalize 三段工具管线、串行/并行执行、`terminate` 语义）+ `types.ts` 的 `AgentMessage` 与 agent 事件协议。
@@ -87,7 +87,7 @@
 
 ## M6 · Compaction（3–7 天）
 
-**热身**：learn-claude-code `s08_context_compact`（~520 行，压缩概念的最小可运行版）。
+**Rust 热身**：`cargo run -p rust-course --bin m6_compaction`（压缩概念的最小可运行版）。
 **目标**：上下文自动压缩。
 
 - 移植对象：`docs/compaction.md` 的规格 + `harness/compaction/`。要点：阈值触发（`contextTokens > window − reserve`）、回退到 turn 边界选切点、**绝不拆开 tool call 与 result**、LLM 生成结构化摘要、`<read-files>/<modified-files>` 跨次累积。
@@ -110,21 +110,21 @@
 ## M8 · 选修拼图（各 2–5 天，按兴趣挑）
 
 - **第二个 provider（OpenAI）**：真正检验 M2 的 trait 抽象是否成立——抽象只有在第二个实现出现时才被验证。
-- **Skills**（热身：`s07_skill_loading`）：机制很薄（发现 SKILL.md → 名字+描述注入 system prompt → 模型自主 `read`），收益极高。
+- **Skills**（先在 `rust-course` 写一个发现 `SKILL.md` 并注入提示的 spike）：机制很薄（发现 SKILL.md → 名字+描述注入 system prompt → 模型自主 `read`），收益极高。
 - **RPC/print 模式**：JSONL over stdio，检验事件协议的完备性。
-- **审批+沙箱**（热身：`s03_permission`；pi 没有，从 codex 学）：`safety.rs` 的决策函数 + macOS seatbelt 包裹 bash 工具——把 L4 认知落地。
-- **MCP client**（热身：`s19_mcp_plugin`）：用官方 rust-sdk（rmcp），对照 codex 的 `rmcp-client`。
+- **审批+沙箱**（先在 `rust-course` 写一个 `Allow/Ask/Reject` 决策函数 spike；pi 没有，从 codex 学）：`safety.rs` 的决策函数 + macOS seatbelt 包裹 bash 工具——把 L4 认知落地。
+- **MCP client**（先写最小 stdio JSON-RPC spike）：用官方 rust-sdk（rmcp），对照 codex 的 `rmcp-client`。
 
-## M9 · Harness OS 扩展（Claude Code 方向，选修，各 3–7 天）
+## M9 · Harness OS 扩展（Rust spike 方向，选修，各 3–7 天）
 
-pi-rs 内核完成后，超出 pi 的能力范围，用 **learn-claude-code 的阶段作为规格**继续扩展。这一步的意义：检验你的内核抽象是否真的能承载"叠加"——如果加这些功能需要改 M3 的 loop 代码，说明内核抽象有问题。
+pi-rs 内核完成后，超出 pi 的能力范围，继续用 **Rust spike → pi-rs 产品化** 的方式扩展。这一步的意义：检验你的内核抽象是否真的能承载"叠加"——如果加这些功能需要改 M3 的 loop 代码，说明内核抽象有问题。
 
-- **Hooks**（规格：`s04_hooks`；对照 codex `hooks` crate）：工具调用前后的拦截点。你在 M3 已经有 `beforeToolCall/afterToolCall` 注入点，这一步是把它产品化为用户可配置的机制。
-- **Todo/计划工具**（规格：`s05_todo_write`）：纯上下文工程——一个只写不执行的工具如何显著提升多步任务表现。
-- **Subagent**（规格：`s06_subagent`；对照 pi 的 RPC 模式 + orchestrator 包）：把你自己的 agent 作为工具暴露给你自己的 agent。事件协议完备性的终极测试。
-- **文件式记忆**（规格：`s09_memory`；对照 hermes `agent/memory_manager.py`）：注意真实系统的记忆是"文件 + 索引注入 system prompt"，不是向量库。
-- **后台任务 / worktree 隔离**（规格：`s12`–`s13`、`s18`）：任务生命周期管理。
-- 走完这里如果还想继续：`s15`–`s17`（multi-agent teams）和 hermes 的 gateway 是下一个地平线，但那已经是新项目而非本学习工程的范围。
+- **Hooks**（Rust spike：工具调用前后的拦截 trait；对照 codex `hooks` crate）：工具调用前后的拦截点。你在 M3 已经有 `beforeToolCall/afterToolCall` 注入点，这一步是把它产品化为用户可配置的机制。
+- **Todo/计划工具**（Rust spike：一个只写不执行的 tool）：纯上下文工程——一个只写不执行的工具如何显著提升多步任务表现。
+- **Subagent**（Rust spike：把 `run_agent_loop` 包成一个 tool；对照 pi 的 RPC 模式 + orchestrator 包）：把你自己的 agent 作为工具暴露给你自己的 agent。事件协议完备性的终极测试。
+- **文件式记忆**（Rust spike：扫描 memory 目录并注入索引；对照 hermes `agent/memory_manager.py`）：注意真实系统的记忆是"文件 + 索引注入 system prompt"，不是向量库。
+- **后台任务 / worktree 隔离**（Rust spike：任务状态机 + 工作目录策略）：任务生命周期管理。
+- 走完这里如果还想继续：multi-agent teams 和 hermes 的 gateway 是下一个地平线，但那已经是新项目而非本学习工程的范围。
 
 ---
 

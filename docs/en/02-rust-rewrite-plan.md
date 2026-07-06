@@ -3,13 +3,13 @@ English | [中文](../zh/02-rust-rewrite-plan.md)
 # 02 — pi-rs: A Milestone-Driven Rust Rewrite Plan
 
 Rewrite pi in Rust under `pi-rs/`. The milestones follow the spine of pi's package dependencies: **ai → agent → tools → session → tui**.
-Each milestone includes: a warm-up (the matching learn-claude-code stage), a goal, what to port (files in pi), Rust learning points, codex cross-references, and acceptance criteria.
+Each milestone includes: a Rust warm-up lab, a goal, what to port (files in pi), Rust learning points, codex cross-references, and acceptance criteria.
 
 **The kernel framing** (a useful mental anchor): M0–M3 together form the harness's "minimal kernel" — **loop + context assembly + tool dispatch**, those three things. Everything after M4 (truncation, sessions, compaction, TUI, permissions) is an engineering decision layered on top of the kernel. Once M3 passes acceptance, the kernel stands.
 
 **Ground rules**:
 - pi is a spec, not scripture — when you hit TS-specific idioms (declaration merging, duck-typed injection), stop and think through the Rust equivalent (traits, generics, enums). That's exactly where the learning happens.
-- Before starting each milestone, run the matching learn-claude-code stage first (the "warm-up" line below) — half an hour buys you working intuition.
+- Before starting each milestone, run the matching `rust-course` lab first. For advanced topics without a lab yet, write a 50–150 line Rust spike in `rust-course` before productizing it in `pi-rs/`.
 - At the end of each milestone, run `cargo clippy && cargo fmt && cargo test` and write a note (template in `notes/TEMPLATE.md`).
 - Don't abstract prematurely. pi itself was "make it run first, abstract later."
 
@@ -45,7 +45,7 @@ Recommended base dependencies: `tokio` (async runtime), `reqwest` (HTTP + stream
 
 ## M2 · Streaming Anthropic Provider (1–2 weeks, the first hard fight)
 
-**Warm-up**: learn-claude-code `s11_error_recovery` (how errors get swallowed into the stream instead of blowing up).
+**Rust warm-up**: `cargo run -p rust-course --bin m2_stream_errors` (how errors get encoded into the stream instead of blowing up).
 **Goal**: call Anthropic over SSE, translate raw events into M1's `AssistantMessageEvent`, including incremental assembly of tool-call fragments.
 
 - What to port: `packages/ai/src/api/anthropic-messages.ts` (including the partial-JSON assembly logic).
@@ -57,7 +57,7 @@ Recommended base dependencies: `tokio` (async runtime), `reqwest` (HTTP + stream
 
 ## M3 · Agent Loop (1–2 weeks, the cognitive core of the whole project)
 
-**Warm-up**: learn-claude-code `s01_agent_loop` + `s02_tool_use` + `s10_system_prompt` (if you already ran s01/s02 in step zero, just reread the code).
+**Rust warm-up**: `cargo run -p rust-course --bin m3_agent_loop` (if you already ran it in step zero, just reread the loop in `rust-course/src/lib.rs`).
 **Goal**: port `agent-loop.ts`; create the `pi-agent` crate.
 
 - What to port: `packages/agent/src/agent-loop.ts` (the nested inner/outer loop, the prepare/execute/finalize three-stage tool pipeline, serial/parallel execution, `terminate` semantics) + `AgentMessage` and the agent event protocol from `types.ts`.
@@ -87,7 +87,7 @@ Recommended base dependencies: `tokio` (async runtime), `reqwest` (HTTP + stream
 
 ## M6 · Compaction (3–7 days)
 
-**Warm-up**: learn-claude-code `s08_context_compact` (~520 lines, the minimal runnable version of the compaction concept).
+**Rust warm-up**: `cargo run -p rust-course --bin m6_compaction` (the minimal runnable version of the compaction concept).
 **Goal**: automatic context compaction.
 
 - What to port: the spec in `docs/compaction.md` + `harness/compaction/`. Key points: threshold trigger (`contextTokens > window − reserve`), falling back to a turn boundary when picking the cut point, **never split a tool call from its result**, LLM-generated structured summaries, `<read-files>/<modified-files>` accumulating across compactions.
@@ -110,21 +110,21 @@ Recommended base dependencies: `tokio` (async runtime), `reqwest` (HTTP + stream
 ## M8 · Elective Pieces (2–5 days each, pick by interest)
 
 - **A second provider (OpenAI)**: the real test of whether M2's trait abstraction holds up — an abstraction is only validated when the second implementation shows up.
-- **Skills** (warm-up: `s07_skill_loading`): the mechanism is thin (discover SKILL.md → inject name + description into the system prompt → the model `read`s it on its own), the payoff is huge.
+- **Skills** (first write a `rust-course` spike that discovers `SKILL.md` files and injects their descriptions): the mechanism is thin (discover SKILL.md → inject name + description into the system prompt → the model `read`s it on its own), the payoff is huge.
 - **RPC / print mode**: JSONL over stdio — a test of whether your event protocol is complete.
-- **Approval + sandbox** (warm-up: `s03_permission`; pi doesn't have this — learn it from codex): the decision function in `safety.rs` + wrapping the bash tool in macOS seatbelt — landing the L4 insight in code.
-- **MCP client** (warm-up: `s19_mcp_plugin`): use the official rust-sdk (rmcp), cross-referencing codex's `rmcp-client`.
+- **Approval + sandbox** (first write an `Allow/Ask/Reject` decision-function spike in `rust-course`; pi doesn't have this — learn it from codex): the decision function in `safety.rs` + wrapping the bash tool in macOS seatbelt — landing the L4 insight in code.
+- **MCP client** (first write a minimal stdio JSON-RPC spike): use the official rust-sdk (rmcp), cross-referencing codex's `rmcp-client`.
 
-## M9 · Harness OS Extensions (the Claude Code direction, elective, 3–7 days each)
+## M9 · Harness OS Extensions (Rust-spike track, elective, 3–7 days each)
 
-Once the pi-rs kernel is done, go beyond what pi covers, using **learn-claude-code's stages as the spec**. The point of this step: it tests whether your kernel abstractions can actually carry "layering on top" — if adding these features requires changing M3's loop code, your kernel abstraction is broken.
+Once the pi-rs kernel is done, go beyond what pi covers using the same **Rust spike → productize in pi-rs** rhythm. The point of this step: it tests whether your kernel abstractions can actually carry "layering on top" — if adding these features requires changing M3's loop code, your kernel abstraction is broken.
 
-- **Hooks** (spec: `s04_hooks`; cross-reference codex's `hooks` crate): interception points around tool calls. You already have `beforeToolCall/afterToolCall` injection points from M3 — this step productizes them into a user-configurable mechanism.
-- **Todo / planning tool** (spec: `s05_todo_write`): pure context engineering — how a write-only, executes-nothing tool dramatically improves multi-step task performance.
-- **Subagent** (spec: `s06_subagent`; cross-reference pi's RPC mode + the orchestrator package): expose your own agent as a tool to your own agent. The ultimate test of event-protocol completeness.
-- **File-based memory** (spec: `s09_memory`; cross-reference hermes `agent/memory_manager.py`): note that memory in real systems is "files + an index injected into the system prompt," not a vector store.
-- **Background tasks / worktree isolation** (spec: `s12`–`s13`, `s18`): task lifecycle management.
-- If you get all the way here and still want more: `s15`–`s17` (multi-agent teams) and hermes's gateway are the next horizon — but that's a new project, not part of this learning effort.
+- **Hooks** (Rust spike: an interception trait around tool calls; cross-reference codex's `hooks` crate): interception points around tool calls. You already have `beforeToolCall/afterToolCall` injection points from M3 — this step productizes them into a user-configurable mechanism.
+- **Todo / planning tool** (Rust spike: a write-only, executes-nothing tool): pure context engineering — how a write-only tool dramatically improves multi-step task performance.
+- **Subagent** (Rust spike: wrap `run_agent_loop` as a tool; cross-reference pi's RPC mode + the orchestrator package): expose your own agent as a tool to your own agent. The ultimate test of event-protocol completeness.
+- **File-based memory** (Rust spike: scan a memory directory and inject an index; cross-reference hermes `agent/memory_manager.py`): note that memory in real systems is "files + an index injected into the system prompt," not a vector store.
+- **Background tasks / worktree isolation** (Rust spike: task state machine + workspace policy): task lifecycle management.
+- If you get all the way here and still want more: multi-agent teams and hermes's gateway are the next horizon — but that's a new project, not part of this learning effort.
 
 ---
 

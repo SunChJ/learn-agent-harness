@@ -1,42 +1,34 @@
 [English](../en/01-reading-map.md) | 中文
 
-# 01 — 三库对照阅读地图
+# 01 — Rust 优先的对照阅读地图
 
 按概念组织，每个概念给出：读哪些文件、按什么顺序、读的时候回答什么问题。
-路径均相对于各仓库根目录。**原则：先跑 learn-claude-code 对应阶段（直觉），再读 pi（小而干净），带着问题读 codex（工业答案），hermes 只在标注处扫一眼。**
+路径均相对于各仓库根目录。**原则：先跑 `rust-course` 对应 lab（Rust 直觉），再读 pi（小而干净），带着问题读 codex（工业答案），hermes 只在标注处扫一眼。**
 
 ---
 
-## 第零步：跑通裸 loop（半天，动手不读源码）
+## 第零步：跑通 Rust 裸 loop（半天，动手不读源码）
 
 在读任何真实代码库之前，先把 harness 的"第一性原理"跑在手上：
 
 ```bash
-cd learn-claude-code && pip install -r requirements.txt
-ANTHROPIC_API_KEY=... python s01_agent_loop/code.py   # 137 行的完整 agent
-python s02_tool_use/code.py                            # 加上工具分发
+cargo run -p rust-course --bin m0_hello_rust
+cargo run -p rust-course --bin m3_agent_loop           # 最小 agent loop + 工具分发
+cargo run -p rust-course --bin m2_stream_errors        # 错误作为流事件
+cargo run -p rust-course --bin m6_compaction           # compaction 不拆 tool/result
 ```
 
-读懂这 ~300 行 + 两篇 stage README。此后你在 pi/codex 里看到的一切，都是往这个裸 loop 上叠加的工程决策。**整个 harness 的秘密就是 `while stop_reason == "tool_use"` 这一行**——先让这句话在你手里成立，再去看别人怎么把它做成产品。
+读懂 `rust-course/src/lib.rs` 和这几个 bin。此后你在 pi/codex 里看到的一切，都是往这个裸 loop 上叠加的工程决策。**整个 harness 的秘密就是"模型继续请求工具时，loop 就执行工具并把结果回填"**——先让这件事在 Rust 里成立，再去看别人怎么把它做成产品。
 
-### learn-claude-code 阶段 ↔ 本体系映射表
+### Rust lab ↔ 本体系映射表
 
-| 阶段 | 主题 | 对应认知层 / 里程碑 |
+| Lab | 主题 | 对应认知层 / 里程碑 |
 |---|---|---|
-| s01 agent_loop / s02 tool_use | 裸 loop + 工具分发 | L1–L2 / M3 前热身 |
-| s03 permission | 审批 | L4 / M8 |
-| s04 hooks / s05 todo_write | 钩子、计划工具 | L6 / M9 |
-| s06 subagent | 子 agent | L7 / M9 |
-| s07 skill_loading | skills | L6 / M8 |
-| s08 context_compact | 压缩 | L3 / M6 |
-| s09 memory | 文件式记忆 | L3 / M9 |
-| s10 system_prompt | system prompt 组装 | L2 / M3 |
-| s11 error_recovery | 错误恢复 | L0 / M2 |
-| s12–s14 task/background/cron | 任务系统 | L7 / M9（对照 hermes） |
-| s15–s17 teams/autonomous | 多 agent | 超纲，体系完成后选读 |
-| s18 worktree_isolation | 隔离 | L4 / M9 |
-| s19 mcp_plugin | MCP | L6 / M8 |
-| s20 comprehensive | 综合 | 总复习 |
+| `m0_hello_rust` | Cargo workspace + Rust 起点 | M0 |
+| `m2_stream_errors` | 流式事件 + 错误即数据 | L0 / M2 |
+| `m3_agent_loop` | 裸 loop + 工具分发 | L1–L2 / M3 |
+| `m6_compaction` | 压缩不拆 tool/result | L3 / M6 |
+| 自己加小 spike | 审批、hooks、skills、MCP、subagent | L4/L6/L7 / M8–M9 |
 
 ---
 
@@ -46,7 +38,7 @@ python s02_tool_use/code.py                            # 加上工具分发
 
 | 步骤 | 读什么 | 回答什么 |
 |---|---|---|
-| 0 | learn-claude-code `s01` + `s02`（见上文第零步） | 裸 loop 长什么样？停止条件是什么？ |
+| 0 | `rust-course` 的 `m3_agent_loop`（见上文第零步） | 裸 loop 长什么样？停止条件是什么？ |
 | 1 | pi `README.md` + `AGENTS.md` + `packages/coding-agent/docs/index.md` | 作者的设计哲学是什么？"small core, extended via TypeScript" 具体指什么？ |
 | 2 | pi `packages/ai/src/types.ts`（只看 `Message`、content blocks、`AssistantMessageEvent`） | 内部消息模型长什么样？流式事件为什么每个都带完整 partial？ |
 | 3 | pi `packages/agent/src/agent-loop.ts` **逐行精读** | 内外双循环各管什么？turn 何时结束？工具调用的 prepare/execute/finalize 三段各做什么？ |

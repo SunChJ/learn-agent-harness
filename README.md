@@ -2,7 +2,7 @@ English | [中文](./README-zh.md)
 
 # Learn Agent Harness — Build Your Own Coding Agent in Rust
 
-**A learning path, not a framework.** You study four real agent harnesses — each playing a distinct role — and rebuild the smallest, cleanest one ([pi](https://github.com/badlogic/pi-mono)) in Rust, milestone by milestone. By the end you own three things at once: a working mental model of how coding-agent harnesses actually work, a real Rust codebase you wrote yourself, and the judgment to evaluate any agent framework against implementations that ship.
+**A learning path, not a framework.** You start in Rust immediately, study three real agent harnesses — each playing a distinct role — and rebuild the smallest, cleanest one ([pi](https://github.com/badlogic/pi-mono)) in Rust, milestone by milestone. By the end you own three things at once: a working mental model of how coding-agent harnesses actually work, a real Rust codebase you wrote yourself, and the judgment to evaluate any agent framework against implementations that ship.
 
 ## Why this exists
 
@@ -18,7 +18,7 @@ The references are pinned as git submodules — one clone gets you everything (s
 
 | Repo | Role | What it gives you |
 |---|---|---|
-| [learn-claude-code](https://github.com/shareAI-lab/learn-claude-code) (Python, 20 staged steps) | **Textbook** | Each concept as a self-contained, runnable `code.py` — from a 137-line bare loop to subagents and hooks. Run the matching stage *before* each milestone: 30 minutes buys you a runnable intuition. |
+| `rust-course/` (Rust, in this repo) | **Textbook** | Small runnable Rust labs for the core harness ideas: Cargo workspace, event streams, the agent loop, tool dispatch, and compaction. Run the matching lab *before* each milestone so the intuition is already in Rust. |
 | [pi](https://github.com/badlogic/pi-mono) (TypeScript, 5 packages) | **Spec** | The rewrite target. Hand-written core under ~10k lines, clean injectable seams everywhere, and 33 official design docs. Small enough to hold in your head, real enough to matter. |
 | [Codex CLI](https://github.com/openai/codex) (Rust, ~98 crates) | **Industrial reference** | The same problems — loop, tool dispatch, streaming, sandboxing — solved in production Rust. After each milestone, review your code against theirs. |
 | Hermes Agent by Nous Research (Python) | **Contrast** | Answers the questions the others don't ask: multi-channel gateway, self-improving memory/skills, cron, ACP. Used to stress-test the completeness of your mental model — skim only. |
@@ -26,7 +26,7 @@ The references are pinned as git submodules — one clone gets you everything (s
 **The per-milestone loop:**
 
 ```
-① Warm up   — run the matching learn-claude-code stage (runnable intuition, ~30 min)
+① Warm up   — run the matching `rust-course` lab (runnable Rust intuition, ~30 min)
 ② Read      — the pi module + its design doc; write down the design decisions in your own words
 ③ Build     — implement it in Rust in pi-rs/; make it work first, make it pretty later
 ④ Compare   — open the Codex code that solves the same problem; review your abstractions
@@ -63,18 +63,18 @@ M0–M3 form the **kernel**: loop + context assembly + tool dispatch. Everything
 ## Setup
 
 ```bash
-# The four references come along as pinned submodules:
+# The reference repos come along as pinned submodules:
 git clone --recurse-submodules https://github.com/SunChJ/learn-agent-harness.git
 cd learn-agent-harness
 
 # (already cloned without submodules? run: git submodule update --init)
 
-# Warm-up stages need Python + an Anthropic API key:
-cd learn-claude-code && pip install -r requirements.txt
-ANTHROPIC_API_KEY=... python s01_agent_loop/code.py
+# Start in Rust, no API key required:
+cargo run -p rust-course --bin m0_hello_rust
+cargo run -p rust-course --bin m3_agent_loop
 ```
 
-Your Rust implementation lives in `pi-rs/` — you `cargo init` it yourself in M0; that's part of the exercise.
+Your production rewrite lives in `pi-rs/` — you `cargo init` it yourself in M0; that's part of the exercise. The `rust-course/` crate is only the lab bench.
 
 ## Who this is for
 
@@ -85,7 +85,7 @@ Your Rust implementation lives in `pi-rs/` — you `cargo init` it yourself in M
 ## How to start
 
 1. Read [the mental model](docs/en/00-harness-mental-model.md) (~1 hour). Map before jungle.
-2. Do "step zero" of [the reading map](docs/en/01-reading-map.md): run the bare loop (~half a day).
+2. Do "step zero" of [the reading map](docs/en/01-reading-map.md): run the Rust bare-loop lab (~half a day).
 3. Start [M0](docs/en/02-rust-rewrite-plan.md).
 
 One rule: after each milestone, write a note ([template](docs/en/notes/TEMPLATE.md)) answering that milestone's design questions **in your own words**. Being able to answer the design questions is the actual deliverable; working code is the by-product.
@@ -94,7 +94,7 @@ One rule: after each milestone, write a note ([template](docs/en/notes/TEMPLATE.
 
 - [pi / pi-mono](https://github.com/badlogic/pi-mono) by Mario Zechner — the rewrite spec.
 - [Codex CLI](https://github.com/openai/codex) by OpenAI — the industrial Rust reference.
-- [learn-claude-code](https://github.com/shareAI-lab/learn-claude-code) by shareAI-lab — the staged textbook, and the inspiration for this repo's bilingual structure.
+- [learn-claude-code](https://github.com/shareAI-lab/learn-claude-code) by shareAI-lab — inspiration for the staged teaching structure; this repo now reworks the starting path into Rust labs.
 - Hermes Agent by Nous Research — the contrast reference.
 
 ## Contributing
