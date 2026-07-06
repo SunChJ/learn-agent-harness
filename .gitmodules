@@ -1,0 +1,9 @@
+[submodule "learn-codex"]
+	path = learn-codex
+	url = https://github.com/SunChJ/learn-codex.git
+[submodule "learn-hermes-agent"]
+	path = learn-hermes-agent
+	url = https://github.com/SunChJ/learn-hermes-agent.git
+[submodule "learn-pi"]
+	path = learn-pi
+	url = https://github.com/SunChJ/learn-pi.git
