@@ -1,6 +1,5 @@
-//! Step 4: instead of dumping the whole parsed event list, walk it and pull
-//! out just the model's final answer text — the shape of code every later
-//! step builds on.
+//! Step 5: give the model a `bash` tool and see it ask to use it. This step
+//! only detects the request — it does not execute anything yet.
 
 use std::env;
 use std::fs;
@@ -9,7 +8,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
 const CODEX_RESPONSES_URL: &str = "https://chatgpt.com/backend-api/codex/responses";
 const DEFAULT_MODEL: &str = "gpt-5.3-codex-spark";
@@ -61,6 +60,11 @@ enum InputItem {
         role: String,
         content: Vec<ContentPart>,
     },
+    FunctionCall {
+        name: String,
+        arguments: String,
+        call_id: String,
+    },
     #[serde(other)]
     Other,
 }
@@ -88,23 +92,18 @@ fn parse_sse_events(text: &str) -> Vec<SseEvent> {
         .collect()
 }
 
-/// Walk the parsed events and concatenate every `output_text` part from every
-/// `message` item — that's the model's final answer for this turn.
-fn extract_final_text(events: &[SseEvent]) -> String {
-    let mut final_text = String::new();
-    for event in events {
-        if let SseEvent::OutputItemDone {
-            item: InputItem::Message { content, .. },
-        } = event
-        {
-            for part in content {
-                if let ContentPart::OutputText { text } = part {
-                    final_text.push_str(text);
-                }
-            }
-        }
-    }
-    final_text
+fn bash_tool_schema() -> Value {
+    json!({
+        "type": "function",
+        "name": "bash",
+        "description": "Run a shell command.",
+        "strict": false,
+        "parameters": {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+    })
 }
 
 #[tokio::main]
@@ -114,13 +113,13 @@ async fn main() -> Result<()> {
 
     let body = json!({
         "model": model,
-        "instructions": "You are a helpful assistant.",
+        "instructions": "You are a coding agent. Use bash to solve tasks.",
         "input": [
             {"type": "message", "role": "user", "content": [
-                {"type": "input_text", "text": "Say exactly: pong"}
+                {"type": "input_text", "text": "What is the current git branch? Use bash."}
             ]}
         ],
-        "tools": [],
+        "tools": [bash_tool_schema()],
         "tool_choice": "auto",
         "parallel_tool_calls": false,
         "reasoning": null,
@@ -143,6 +142,19 @@ async fn main() -> Result<()> {
 
     let text = resp.text().await?;
     let events = parse_sse_events(&text);
-    println!("{}", extract_final_text(&events));
+
+    for event in &events {
+        if let SseEvent::OutputItemDone {
+            item:
+                InputItem::FunctionCall {
+                    name,
+                    arguments,
+                    call_id,
+                },
+        } = event
+        {
+            println!("model wants to call {name}({arguments}) [call_id={call_id}]");
+        }
+    }
     Ok(())
 }
