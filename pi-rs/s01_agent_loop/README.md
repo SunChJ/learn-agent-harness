@@ -37,7 +37,7 @@ The Python original and this project's first Rust draft both called the Anthropi
 
 Reverse-engineered from `learn-codex` (the Rust `codex` CLI source) — see `codex-rs/model-provider-info/src/lib.rs`, `codex-rs/tools/src/responses_api.rs`, and `codex-rs/codex-api/src/sse/responses.rs` if you want to trace the wire format yourself.
 
-**Model note**: the default (`gpt-5.5`) is hardcoded to match this account's `model =` entry in `~/.codex/config.toml`. Check your own config or override with `CODEX_MODEL` if your account/plan uses a different one — trying an unsupported model returns a `400` naming what went wrong.
+**Model note**: the default (`gpt-5.3-codex-spark`) was confirmed working live against this account (so was `gpt-5.5`, `~/.codex/config.toml`'s own default at time of writing — either works here). Check your own config or override with `CODEX_MODEL` if your account/plan needs a different one — trying an unsupported model returns a `400` naming what went wrong.
 
 ## Try It
 

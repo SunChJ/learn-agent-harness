@@ -52,7 +52,7 @@ anyhow = "1"
 - URL: `https://chatgpt.com/backend-api/codex/responses`
 - Headers: `Authorization: Bearer <access_token>`、`ChatGPT-Account-Id: <account_id>`、`originator: codex_cli_rs`、`Accept: text/event-stream`
 - Body 最小字段：`model`、`instructions`（系统提示词）、`input`（这次先写死一条 `{"type":"message","role":"user","content":[{"type":"input_text","text":"..."}]}`）、`tools: []`、`stream: true`（这个后端不支持非流式，必须给 true）
-- 你账号能用的 `model` 是 `gpt-5.5`（写在 `~/.codex/config.toml` 里的 `model = "..."`，跟你自己账号核对）
+- 你账号能用的 `model` 参考 `~/.codex/config.toml` 里的 `model = "..."`；这个项目实测下来 `gpt-5.3-codex-spark` 和 config 里当时配的 `gpt-5.5` 都能用，跟你自己账号核对
 
 **概念**：`#[tokio::main] async fn main()`、`serde_json::json!` 宏拼 body（不用先定义 struct，用 `Value` 最快）、`reqwest::Client::post().header().json().send().await`。
 
