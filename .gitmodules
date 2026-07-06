@@ -7,3 +7,6 @@
 [submodule "learn-pi"]
 	path = learn-pi
 	url = https://github.com/SunChJ/learn-pi.git
+[submodule "learn-claude-code"]
+	path = learn-claude-code
+	url = https://github.com/SunChJ/learn-claude-code.git
