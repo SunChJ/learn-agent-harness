@@ -1,6 +1,8 @@
-//! Step 6: actually execute the function call Step 5 only detected. Still a
-//! single shot — the result isn't fed back to the model yet (that's Step 7,
-//! the real loop).
+//! Step 7: the actual agent loop — Steps 2-6 wrapped in `loop`, feeding each
+//! tool's output back as a `function_call_output` item and re-sending the
+//! full `input` history until a turn produces zero function calls. This is
+//! the whole lesson of s01: a single-shot call becomes an agent by making
+//! this loop instead of returning after one request.
 
 use std::env;
 use std::fs;
@@ -8,9 +10,9 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 const CODEX_RESPONSES_URL: &str = "https://chatgpt.com/backend-api/codex/responses";
@@ -46,9 +48,14 @@ fn load_codex_tokens() -> Result<TokenData> {
     Ok(parsed.tokens)
 }
 
-#[derive(Deserialize, Debug, Clone)]
+// `input` is now serialized back into the request too (it's a flat item
+// list, appended to turn after turn), so these derive Serialize as well.
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ContentPart {
+    InputText {
+        text: String,
+    },
     OutputText {
         text: String,
     },
@@ -56,7 +63,7 @@ enum ContentPart {
     Other,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum InputItem {
     Message {
@@ -67,6 +74,10 @@ enum InputItem {
         name: String,
         arguments: String,
         call_id: String,
+    },
+    FunctionCallOutput {
+        call_id: String,
+        output: String,
     },
     #[serde(other)]
     Other,
@@ -144,60 +155,133 @@ async fn run_bash(command: &str) -> String {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let tokens = load_codex_tokens()?;
-    let model = env::var("CODEX_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+struct Config {
+    client: Client,
+    access_token: String,
+    account_id: String,
+    model: String,
+    instructions: String,
+}
 
-    let body = json!({
-        "model": model,
-        "instructions": "You are a coding agent. Use bash to solve tasks.",
-        "input": [
-            {"type": "message", "role": "user", "content": [
-                {"type": "input_text", "text": "What is the current git branch? Use bash."}
-            ]}
-        ],
-        "tools": [bash_tool_schema()],
-        "tool_choice": "auto",
-        "parallel_tool_calls": false,
-        "reasoning": null,
-        "store": false,
-        "stream": true,
-        "include": [],
-    });
+/// The core pattern: send `input`, execute any function calls the model
+/// asked for, append results, repeat until a turn produces no function calls.
+async fn agent_loop(cfg: &Config, input: &mut Vec<InputItem>) -> Result<()> {
+    loop {
+        let body = json!({
+            "model": cfg.model,
+            "instructions": cfg.instructions,
+            "input": input,
+            "tools": [bash_tool_schema()],
+            "tool_choice": "auto",
+            "parallel_tool_calls": false,
+            "reasoning": null,
+            "store": false,
+            "stream": true,
+            "include": [],
+        });
 
-    let client = Client::new();
-    let resp = client
-        .post(CODEX_RESPONSES_URL)
-        .bearer_auth(&tokens.access_token)
-        .header("ChatGPT-Account-Id", &tokens.account_id)
-        .header("originator", "codex_cli_rs")
-        .header("Accept", "text/event-stream")
-        .json(&body)
-        .send()
-        .await
-        .context("request to Codex backend failed")?;
+        let resp = cfg
+            .client
+            .post(CODEX_RESPONSES_URL)
+            .bearer_auth(&cfg.access_token)
+            .header("ChatGPT-Account-Id", &cfg.account_id)
+            .header("originator", "codex_cli_rs")
+            .header("Accept", "text/event-stream")
+            .json(&body)
+            .send()
+            .await
+            .context("request to Codex backend failed")?;
 
-    let text = resp.text().await?;
-    let events = parse_sse_events(&text);
+        let status = resp.status();
+        let text = resp.text().await?;
+        if status.as_u16() == 401 {
+            bail!(
+                "401 Unauthorized — your Codex session may have expired, run `codex login` again"
+            );
+        }
+        if !status.is_success() {
+            bail!("Codex API error {status}: {text}");
+        }
 
-    for event in &events {
-        if let SseEvent::OutputItemDone {
-            item: InputItem::FunctionCall {
-                name, arguments, ..
-            },
-        } = event
-        {
+        let events = parse_sse_events(&text);
+        let mut calls_to_run: Vec<(String, String, String)> = Vec::new(); // (name, arguments, call_id)
+        let mut final_text = String::new();
+
+        for event in &events {
+            match event {
+                SseEvent::OutputItemDone { item } => match item {
+                    InputItem::FunctionCall {
+                        name,
+                        arguments,
+                        call_id,
+                    } => {
+                        calls_to_run.push((name.clone(), arguments.clone(), call_id.clone()));
+                        input.push(item.clone());
+                    }
+                    InputItem::Message { content, .. } => {
+                        for part in content {
+                            if let ContentPart::OutputText { text } = part {
+                                final_text.push_str(text);
+                            }
+                        }
+                        input.push(item.clone());
+                    }
+                    _ => {}
+                },
+                SseEvent::Failed | SseEvent::Incomplete => {
+                    bail!("Codex response did not complete successfully");
+                }
+                _ => {}
+            }
+        }
+
+        if calls_to_run.is_empty() {
+            if !final_text.is_empty() {
+                println!("{final_text}");
+            }
+            return Ok(());
+        }
+
+        for (name, arguments, call_id) in calls_to_run {
             if name == "bash" {
-                let command = serde_json::from_str::<Value>(arguments)
+                let command = serde_json::from_str::<Value>(&arguments)
                     .ok()
                     .and_then(|v| v.get("command").and_then(Value::as_str).map(str::to_string))
                     .unwrap_or_default();
                 println!("\x1b[33m$ {command}\x1b[0m");
                 let output = run_bash(&command).await;
-                println!("{output}");
+                let preview: String = output.chars().take(200).collect();
+                println!("{preview}");
+                input.push(InputItem::FunctionCallOutput { call_id, output });
             }
         }
+        // loop continues: next iteration re-sends `input`, now including the
+        // function_call + function_call_output pair we just appended
     }
-    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let tokens = load_codex_tokens()?;
+    let model = env::var("CODEX_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+
+    let cfg = Config {
+        client: Client::new(),
+        access_token: tokens.access_token,
+        account_id: tokens.account_id,
+        model,
+        instructions: "You are a coding agent. Use bash to solve tasks.".to_string(),
+    };
+
+    // Still one hardcoded query — this step is about the loop, not the REPL
+    // (that's Step 8). Pick a prompt that needs more than one tool call.
+    let mut input = vec![InputItem::Message {
+        role: "user".to_string(),
+        content: vec![ContentPart::InputText {
+            text: "Create a file called hello.txt containing 'hi', then read it back to me."
+                .to_string(),
+        }],
+    }];
+
+    agent_loop(&cfg, &mut input).await
 }
