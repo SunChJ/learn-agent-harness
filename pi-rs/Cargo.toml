@@ -1,0 +1,3 @@
+[workspace]
+members = ["s01_agent_loop"]
+resolver = "2"
