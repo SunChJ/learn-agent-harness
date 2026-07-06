@@ -1,42 +1,34 @@
 English | [中文](../zh/01-reading-map.md)
 
-# 01 — Three-Repo Comparative Reading Map
+# 01 — Rust-First Comparative Reading Map
 
 Organized by concept. For each concept: which files to read, in what order, and what questions to answer while reading.
-All paths are relative to each repo's root. **The principle: run the matching learn-claude-code stage first (intuition), then read pi (small and clean), then read codex with questions in hand (the industrial answer). Only skim hermes where explicitly marked.**
+All paths are relative to each repo's root. **The principle: run the matching `rust-course` lab first (Rust intuition), then read pi (small and clean), then read codex with questions in hand (the industrial answer). Only skim hermes where explicitly marked.**
 
 ---
 
-## Step zero: get the bare loop running (half a day, hands-on, no source reading)
+## Step zero: get the Rust bare loop running (half a day, hands-on, no source reading)
 
 Before reading any real codebase, get the harness's "first principles" running in your own hands:
 
 ```bash
-cd learn-claude-code && pip install -r requirements.txt
-ANTHROPIC_API_KEY=... python s01_agent_loop/code.py   # a complete agent in 137 lines
-python s02_tool_use/code.py                            # add tool dispatch
+cargo run -p rust-course --bin m0_hello_rust
+cargo run -p rust-course --bin m3_agent_loop           # minimal agent loop + tool dispatch
+cargo run -p rust-course --bin m2_stream_errors        # errors as stream events
+cargo run -p rust-course --bin m6_compaction           # compaction without splitting tool/result
 ```
 
-Understand these ~300 lines plus the two stage READMEs. Everything you see later in pi/codex is engineering decisions layered on top of this bare loop. **The entire secret of a harness is one line: `while stop_reason == "tool_use"`** — make that line true in your own hands first, then go see how others turned it into a product.
+Understand `rust-course/src/lib.rs` and these bins. Everything you see later in pi/codex is engineering decisions layered on top of this bare loop. **The whole harness secret is: while the model keeps asking for tools, the loop executes them and feeds the results back.** Make that true in Rust first, then go see how others turned it into a product.
 
-### learn-claude-code stages ↔ this curriculum
+### Rust labs ↔ this curriculum
 
-| Stage | Topic | Layer / milestone |
+| Lab | Topic | Layer / milestone |
 |---|---|---|
-| s01 agent_loop / s02 tool_use | bare loop + tool dispatch | L1–L2 / warm-up before M3 |
-| s03 permission | approval | L4 / M8 |
-| s04 hooks / s05 todo_write | hooks, planning tool | L6 / M9 |
-| s06 subagent | subagents | L7 / M9 |
-| s07 skill_loading | skills | L6 / M8 |
-| s08 context_compact | compaction | L3 / M6 |
-| s09 memory | file-based memory | L3 / M9 |
-| s10 system_prompt | system prompt assembly | L2 / M3 |
-| s11 error_recovery | error recovery | L0 / M2 |
-| s12–s14 task/background/cron | task system | L7 / M9 (compare against hermes) |
-| s15–s17 teams/autonomous | multi-agent | beyond scope; optional after finishing the curriculum |
-| s18 worktree_isolation | isolation | L4 / M9 |
-| s19 mcp_plugin | MCP | L6 / M8 |
-| s20 comprehensive | capstone | full review |
+| `m0_hello_rust` | Cargo workspace + Rust starting point | M0 |
+| `m2_stream_errors` | stream events + errors as data | L0 / M2 |
+| `m3_agent_loop` | bare loop + tool dispatch | L1–L2 / M3 |
+| `m6_compaction` | compaction without splitting tool/result | L3 / M6 |
+| your own small spike | approval, hooks, skills, MCP, subagents | L4/L6/L7 / M8–M9 |
 
 ---
 
@@ -46,7 +38,7 @@ Goal: walk the L0–L2 minimal core once, end to end, and build a complete menta
 
 | Step | Read | Answer |
 |---|---|---|
-| 0 | learn-claude-code `s01` + `s02` (see step zero above) | What does the bare loop look like? What's the stop condition? |
+| 0 | `rust-course` `m3_agent_loop` (see step zero above) | What does the bare loop look like? What's the stop condition? |
 | 1 | pi `README.md` + `AGENTS.md` + `packages/coding-agent/docs/index.md` | What's the author's design philosophy? What does "small core, extended via TypeScript" mean concretely? |
 | 2 | pi `packages/ai/src/types.ts` (only `Message`, content blocks, `AssistantMessageEvent`) | What does the internal message model look like? Why does every streaming event carry a complete partial? |
 | 3 | pi `packages/agent/src/agent-loop.ts` — **read line by line** | What do the inner and outer loops each own? When does a turn end? What do the prepare/execute/finalize phases of a tool call each do? |

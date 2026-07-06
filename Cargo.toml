@@ -1,0 +1,4 @@
+[workspace]
+members = ["rust-course"]
+exclude = ["pi-rs"]
+resolver = "2"
