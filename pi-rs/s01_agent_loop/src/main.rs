@@ -1,7 +1,6 @@
-//! Step 3: parse the raw SSE text from Step 2 into structured events instead
-//! of eyeballing a wall of JSON. `#[serde(other)]` is the key trick — it lets
-//! the enum skip event/item types we haven't modeled yet (like `reasoning`)
-//! instead of failing to parse the whole response.
+//! Step 4: instead of dumping the whole parsed event list, walk it and pull
+//! out just the model's final answer text — the shape of code every later
+//! step builds on.
 
 use std::env;
 use std::fs;
@@ -44,9 +43,6 @@ fn load_codex_tokens() -> Result<TokenData> {
         .with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(parsed.tokens)
 }
-
-// ── Wire types for the Responses API ──────────────────────────────────────
-// Only the "final text answer" shape is modeled so far — no tool calls yet.
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -92,6 +88,25 @@ fn parse_sse_events(text: &str) -> Vec<SseEvent> {
         .collect()
 }
 
+/// Walk the parsed events and concatenate every `output_text` part from every
+/// `message` item — that's the model's final answer for this turn.
+fn extract_final_text(events: &[SseEvent]) -> String {
+    let mut final_text = String::new();
+    for event in events {
+        if let SseEvent::OutputItemDone {
+            item: InputItem::Message { content, .. },
+        } = event
+        {
+            for part in content {
+                if let ContentPart::OutputText { text } = part {
+                    final_text.push_str(text);
+                }
+            }
+        }
+    }
+    final_text
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let tokens = load_codex_tokens()?;
@@ -128,8 +143,6 @@ async fn main() -> Result<()> {
 
     let text = resp.text().await?;
     let events = parse_sse_events(&text);
-    for event in &events {
-        println!("{event:#?}");
-    }
+    println!("{}", extract_final_text(&events));
     Ok(())
 }
