@@ -1,13 +1,18 @@
-//! Step 1: read the OAuth tokens `codex login` already stored, so we can
-//! reuse the existing Codex CLI (ChatGPT subscription) session instead of a
-//! pay-per-token API key.
+//! Step 2: fire one hardcoded request at OpenAI's Responses API through the
+//! Codex backend, and print the raw response body so we can see what an SSE
+//! response actually looks like before writing any parsing code.
 
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use reqwest::Client;
 use serde::Deserialize;
+use serde_json::json;
+
+const CODEX_RESPONSES_URL: &str = "https://chatgpt.com/backend-api/codex/responses";
+const DEFAULT_MODEL: &str = "gpt-5.3-codex-spark";
 
 #[derive(Deserialize, Debug)]
 struct AuthDotJson {
@@ -33,10 +38,43 @@ fn load_codex_tokens() -> Result<TokenData> {
     Ok(parsed.tokens)
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let tokens = load_codex_tokens()?;
-    println!("s01: Agent Loop (Rust, via Codex subscription)");
-    println!("account_id = {}", tokens.account_id);
-    println!("access_token length = {}", tokens.access_token.len());
+    let model = env::var("CODEX_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+
+    let body = json!({
+        "model": model,
+        "instructions": "You are a helpful assistant.",
+        "input": [
+            {"type": "message", "role": "user", "content": [
+                {"type": "input_text", "text": "Say exactly: pong"}
+            ]}
+        ],
+        "tools": [],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "reasoning": null,
+        "store": false,
+        "stream": true,
+        "include": [],
+    });
+
+    let client = Client::new();
+    let resp = client
+        .post(CODEX_RESPONSES_URL)
+        .bearer_auth(&tokens.access_token)
+        .header("ChatGPT-Account-Id", &tokens.account_id)
+        .header("originator", "codex_cli_rs")
+        .header("Accept", "text/event-stream")
+        .json(&body)
+        .send()
+        .await
+        .context("request to Codex backend failed")?;
+
+    let status = resp.status();
+    let text = resp.text().await?;
+    println!("status: {status}");
+    println!("{text}");
     Ok(())
 }
