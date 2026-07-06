@@ -1,11 +1,25 @@
-//! Step 7: the actual agent loop — Steps 2-6 wrapped in `loop`, feeding each
-//! tool's output back as a `function_call_output` item and re-sending the
-//! full `input` history until a turn produces zero function calls. This is
-//! the whole lesson of s01: a single-shot call becomes an agent by making
-//! this loop instead of returning after one request.
+//! s01_agent_loop — the entire secret of a coding agent in one pattern:
+//!
+//!     while has_tool_calls {
+//!         response = LLM(input, tools)
+//!         execute tools
+//!         append results
+//!     }
+//!
+//! Rust port of learn-claude-code/s01_agent_loop/code.py, but calling OpenAI's
+//! Responses API through an existing Codex CLI (ChatGPT subscription) login
+//! instead of a pay-per-token Anthropic API key. Auth: reads the OAuth tokens
+//! `codex login` already stored at `$CODEX_HOME/auth.json` (default
+//! `~/.codex/auth.json`) — this stage does not implement the OAuth flow or
+//! token refresh itself; see README.md for why.
+//!
+//! Step 8/8: wraps agent_loop() (Step 7) in a REPL — `input` now persists
+//! across turns instead of being rebuilt per-call, so the model keeps
+//! context from earlier questions in the same session.
 
 use std::env;
 use std::fs;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -48,8 +62,11 @@ fn load_codex_tokens() -> Result<TokenData> {
     Ok(parsed.tokens)
 }
 
-// `input` is now serialized back into the request too (it's a flat item
-// list, appended to turn after turn), so these derive Serialize as well.
+// ── Wire types for the Responses API ──────────────────────────────────────
+// Flat "input" item list (not role-grouped messages like Anthropic). One
+// enum covers both what we serialize into the request and what we parse out
+// of `response.output_item.done` events.
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ContentPart {
@@ -79,6 +96,9 @@ enum InputItem {
         call_id: String,
         output: String,
     },
+    // reasoning items, local_shell_call, etc. — not modeled, dropped from
+    // history. Fine for a single bash tool demo; would need handling to
+    // preserve reasoning continuity in a production agent.
     #[serde(other)]
     Other,
 }
@@ -98,26 +118,15 @@ enum SseEvent {
     Other,
 }
 
+/// The endpoint always streams SSE; we buffer the whole body and parse it in
+/// one pass rather than rendering incrementally (true streaming is s02+/M2
+/// material, not this stage's concern).
 fn parse_sse_events(text: &str) -> Vec<SseEvent> {
     text.lines()
         .filter_map(|line| line.strip_prefix("data: "))
         .filter(|data| *data != "[DONE]")
         .filter_map(|data| serde_json::from_str::<SseEvent>(data).ok())
         .collect()
-}
-
-fn bash_tool_schema() -> Value {
-    json!({
-        "type": "function",
-        "name": "bash",
-        "description": "Run a shell command.",
-        "strict": false,
-        "parameters": {
-            "type": "object",
-            "properties": {"command": {"type": "string"}},
-            "required": ["command"],
-        },
-    })
 }
 
 const DANGEROUS: [&str; 5] = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"];
@@ -161,6 +170,20 @@ struct Config {
     account_id: String,
     model: String,
     instructions: String,
+}
+
+fn bash_tool_schema() -> Value {
+    json!({
+        "type": "function",
+        "name": "bash",
+        "description": "Run a shell command.",
+        "strict": false,
+        "parameters": {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+    })
 }
 
 /// The core pattern: send `input`, execute any function calls the model
@@ -255,33 +278,61 @@ async fn agent_loop(cfg: &Config, input: &mut Vec<InputItem>) -> Result<()> {
                 input.push(InputItem::FunctionCallOutput { call_id, output });
             }
         }
-        // loop continues: next iteration re-sends `input`, now including the
-        // function_call + function_call_output pair we just appended
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenvy::dotenv().ok();
+
     let tokens = load_codex_tokens()?;
     let model = env::var("CODEX_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+    let cwd = env::current_dir()?;
+    let instructions = format!(
+        "You are a coding agent at {}. Use bash to solve tasks. Act, don't explain.",
+        cwd.display()
+    );
 
     let cfg = Config {
         client: Client::new(),
         access_token: tokens.access_token,
         account_id: tokens.account_id,
         model,
-        instructions: "You are a coding agent. Use bash to solve tasks.".to_string(),
+        instructions,
     };
 
-    // Still one hardcoded query — this step is about the loop, not the REPL
-    // (that's Step 8). Pick a prompt that needs more than one tool call.
-    let mut input = vec![InputItem::Message {
-        role: "user".to_string(),
-        content: vec![ContentPart::InputText {
-            text: "Create a file called hello.txt containing 'hi', then read it back to me."
-                .to_string(),
-        }],
-    }];
+    println!("s01: Agent Loop (Rust, via Codex subscription)");
+    println!("输入问题，回车发送。输入 q 退出。\n");
 
-    agent_loop(&cfg, &mut input).await
+    let stdin = io::stdin();
+    let mut input: Vec<InputItem> = Vec::new();
+
+    loop {
+        print!("\x1b[36ms01 >> \x1b[0m");
+        io::stdout().flush()?;
+
+        let mut line = String::new();
+        if stdin.read_line(&mut line)? == 0 {
+            break; // EOF (Ctrl-D)
+        }
+        let query = line.trim();
+        if query.is_empty() || query.eq_ignore_ascii_case("q") || query.eq_ignore_ascii_case("exit")
+        {
+            break;
+        }
+
+        input.push(InputItem::Message {
+            role: "user".to_string(),
+            content: vec![ContentPart::InputText {
+                text: query.to_string(),
+            }],
+        });
+
+        if let Err(e) = agent_loop(&cfg, &mut input).await {
+            eprintln!("Error: {e}");
+        }
+        println!();
+    }
+
+    Ok(())
 }
