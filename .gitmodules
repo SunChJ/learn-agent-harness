@@ -10,3 +10,6 @@
 [submodule "learn-claude-code"]
 	path = learn-claude-code
 	url = https://github.com/SunChJ/learn-claude-code.git
+[submodule "learn-rust"]
+	path = learn-rust
+	url = https://github.com/SunChJ/learn-rust.git
