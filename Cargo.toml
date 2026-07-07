@@ -1,4 +1,4 @@
 [workspace]
-members = ["rust-course"]
+members = ["rust-course", "learn-anyhow"]
 exclude = ["pi-rs"]
 resolver = "2"
