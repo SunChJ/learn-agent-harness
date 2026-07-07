@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rust Anyhow Source Study"
+  short_description: "Continue anyhow learning by tracing Rust source"
+  default_prompt: "Continue the anyhow learning workflow and add the next runnable example plus notes."
